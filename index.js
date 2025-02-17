@@ -23,7 +23,7 @@ if (!jwtSecret || !uri) {
 app.use(bodyParser.json());
 app.use(
   cors({
-    origin: ["http://localhost:3001"],
+    origin: "https://zerodha-frontend-4gwg.onrender.com",
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
