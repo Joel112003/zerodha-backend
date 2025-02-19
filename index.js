@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const path = require("path");
 const authRoute = require("./Routes/AuthRoute");
 const { HoldingModel } = require("./Model/HoldingModel");
 const { PositionModel } = require("./Model/PositionModel");
@@ -28,7 +29,6 @@ app.use(
       "http://localhost:3001",
       "https://zerodha-frontend-4gwg.onrender.com/",
       "https://zerodha-dashboard-nh23.onrender.com/",
-
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
@@ -36,6 +36,15 @@ app.use(
 );
 app.use(cookieParser());
 app.use(express.json());
+
+// Serve React frontend in production
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static(path.join(__dirname, "build")));
+
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "build", "index.html"));
+  });
+}
 
 // Routes
 app.use("/auth", authRoute);
@@ -142,6 +151,7 @@ app.get("/holding/:stockName", async (req, res) => {
     res.status(500).json({ message: "Error fetching holding", error });
   }
 });
+
 app.get("/getOrders", async (req, res) => {
   try {
     const orders = await OrderModel.find();
