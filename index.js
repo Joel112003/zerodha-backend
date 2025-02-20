@@ -13,11 +13,11 @@ const { OrderModel } = require("./Model/OrderModel");
 
 const app = express();
 const PORT = process.env.PORT || 3002;
-const uri = process.env.MONGO_URL;
-const jwtSecret = process.env.JWT_SECRET;
+const MONGO_URI = process.env.MONGO_URL;
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Validate environment variables
-if (!jwtSecret || !uri) {
+if (!JWT_SECRET || !MONGO_URI) {
   console.error("❌ Missing required environment variables. Check .env file.");
   process.exit(1);
 }
@@ -55,14 +55,122 @@ app.use(
 // Routes
 app.use("/auth", authRoute);
 
+// Holdings endpoints
+app.get("/addholdings", async (req, res, next) => {
+  try {
+    const allHoldings = await HoldingModel.find({});
+    res.json({ success: true, data: allHoldings });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Positions endpoints
+app.get("/addpositions", async (req, res, next) => {
+  try {
+    const allPositions = await PositionModel.find({});
+    res.json({ success: true, data: allPositions });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Orders endpoints
+app.post("/newOrder", async (req, res, next) => {
+  try {
+    const { name, qty, price, mode } = req.body;
+
+    if (!name || !qty || !price || !mode) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    if (!Number.isInteger(qty) || qty <= 0) {
+      return res.status(400).json({ success: false, message: "Quantity must be a positive integer" });
+    }
+
+    if (typeof price !== "number" || price <= 0) {
+      return res.status(400).json({ success: false, message: "Price must be a positive number" });
+    }
+
+    if (!["BUY", "SELL"].includes(mode)) {
+      return res.status(400).json({ success: false, message: "Mode must be BUY or SELL" });
+    }
+
+    const newOrder = new OrderModel({ name, qty, price, mode });
+    await newOrder.save();
+
+    // Update holdings
+    const existingHolding = await HoldingModel.findOne({ name });
+
+    if (existingHolding) {
+      if (mode === "BUY") {
+        const totalCost = existingHolding.avg * existingHolding.qty + price * qty;
+        const totalQty = existingHolding.qty + qty;
+        const newAvgPrice = totalCost / totalQty;
+
+        await HoldingModel.findByIdAndUpdate(existingHolding._id, {
+          qty: totalQty,
+          avg: newAvgPrice,
+          price,
+        });
+      } else if (mode === "SELL") {
+        const remainingQty = existingHolding.qty - qty;
+        if (remainingQty > 0) {
+          await HoldingModel.findByIdAndUpdate(existingHolding._id, {
+            qty: remainingQty,
+            price,
+          });
+        } else if (remainingQty === 0) {
+          await HoldingModel.findByIdAndDelete(existingHolding._id);
+        } else {
+          throw new Error("Cannot sell more than owned quantity");
+        }
+      }
+    } else if (mode === "BUY") {
+      const newHolding = new HoldingModel({ name, qty, avg: price, price, net: 0, day: 0 });
+      await newHolding.save();
+    } else {
+      throw new Error("Cannot sell stock that is not owned");
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Order placed and holdings updated successfully",
+      order: newOrder,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get specific stock holding
+app.get("/holding/:stockName", async (req, res, next) => {
+  try {
+    const holding = await HoldingModel.findOne({ name: req.params.stockName });
+    res.json({ success: true, data: holding || null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get all orders
+app.get("/addOrders", async (req, res, next) => {
+  try {
+    const orders = await OrderModel.find();
+    res.json({ success: true, data: orders });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Serve frontend (Production Setup)
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../frontend/build")));
+  const frontendPath = path.join(__dirname, "../frontend/build");
+  app.use(express.static(frontendPath));
+
   app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "../frontend/build", "index.html"));
+    res.sendFile(path.join(frontendPath, "index.html"));
   });
-  
 }
 
 // 404 Middleware
@@ -75,181 +183,21 @@ app.use((err, req, res, next) => {
   console.error("🔥 Error:", err);
   res.status(err.status || 500).json({ success: false, message: err.message || "Internal Server Error" });
 });
-// Holdings endpoints
-app.get("/addholdings", async (req, res) => {
-  try {
-    const allHoldings = await HoldingModel.find({});
-    res.json({ success: true, data: allHoldings });
-  } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error fetching holdings",
-        error: error.message,
-      });
-  }
-});
-
-// Positions endpoints
-app.get("/addpositions", async (req, res) => {
-  try {
-    const allPositions = await PositionModel.find({});
-    res.json({ success: true, data: allPositions });
-  } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error fetching positions",
-        error: error.message,
-      });
-  }
-});
-
-// Orders endpoints
-app.post("/newOrder", async (req, res) => {
-  try {
-    const { name, qty, price, mode } = req.body;
-
-    // Input validation
-    if (!name || !qty || !price || !mode) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing required fields" });
-    }
-    if (!Number.isInteger(qty) || qty <= 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Quantity must be a positive integer",
-        });
-    }
-    if (typeof price !== "number" || price <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Price must be a positive number" });
-    }
-    if (!["BUY", "SELL"].includes(mode)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Mode must be BUY or SELL" });
-    }
-
-    // Create order record
-    const newOrder = new OrderModel({ name, qty, price, mode });
-    await newOrder.save();
-
-    // Update holdings
-    const existingHolding = await HoldingModel.findOne({ name });
-
-    if (existingHolding) {
-      if (mode === "BUY") {
-        const totalCost =
-          existingHolding.avg * existingHolding.qty + price * qty;
-        const totalQty = existingHolding.qty + qty;
-        const newAvgPrice = totalCost / totalQty;
-
-        await HoldingModel.findByIdAndUpdate(existingHolding._id, {
-          qty: totalQty,
-          avg: newAvgPrice,
-          price, // Update current price
-        });
-      } else if (mode === "SELL") {
-        const remainingQty = existingHolding.qty - qty;
-        if (remainingQty > 0) {
-          await HoldingModel.findByIdAndUpdate(existingHolding._id, {
-            qty: remainingQty,
-            price, // Update current price
-          });
-        } else if (remainingQty === 0) {
-          await HoldingModel.findByIdAndDelete(existingHolding._id);
-        } else {
-          throw new Error("Cannot sell more than owned quantity");
-        }
-      }
-    } else if (mode === "BUY") {
-      const newHolding = new HoldingModel({
-        name,
-        qty,
-        avg: price,
-        price,
-        net: 0,
-        day: 0,
-      });
-      await newHolding.save();
-    } else {
-      throw new Error("Cannot sell stock that is not owned");
-    }
-
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Order placed and holdings updated successfully",
-        order: newOrder,
-      });
-  } catch (error) {
-    console.error("Error processing order:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error processing order",
-        error: error.message,
-      });
-  }
-});
-
-// Holding for specific stock
-app.get("/holding/:stockName", async (req, res) => {
-  try {
-    const holding = await HoldingModel.findOne({ name: req.params.stockName });
-    res.json({ success: true, data: holding || null });
-  } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error fetching holding",
-        error: error.message,
-      });
-  }
-});
-
-app.get("/getOrders", async (req, res) => {
-  try {
-    const orders = await OrderModel.find();
-    res.json({ success: true, data: orders });
-  } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Error fetching orders",
-        error: error.message,
-      });
-  }
-});
-
-// Serve frontend (ensure this is last)
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "build")));
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(__dirname, "build", "index.html"));
-  });
-}
-
 
 // MongoDB Connection
-mongoose
-  .connect(uri, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => {
+const connectDB = async () => {
+  try {
+    await mongoose.connect(MONGO_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
     console.log("✅ Connected to MongoDB");
+
     app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-  })
-  .catch((err) => {
+  } catch (err) {
     console.error("❌ MongoDB connection error:", err);
     process.exit(1);
-  });
+  }
+};
+
+connectDB();
