@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const path = require("path");
+const fs = require('fs');
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const authRoute = require("./Routes/AuthRoute");
@@ -163,15 +164,25 @@ app.get("/addOrders", async (req, res, next) => {
   }
 });
 
-// Serve frontend (Production Setup)
-if (process.env.NODE_ENV === "production") {
-  const frontendPath = path.join(__dirname, "../frontend/build");
-  app.use(express.static(frontendPath));
+// Serve static files and handle frontend routes
+const frontendPath = path.resolve(__dirname, "../frontend/build");
+console.log("Frontend path:", frontendPath); // Debug log
 
-  app.get("*", (req, res) => {
-    res.sendFile(path.join(frontendPath, "index.html"));
-  });
-}
+// Serve static files
+app.use(express.static(frontendPath));
+
+// Handle all other routes by serving index.html
+app.get("*", (req, res) => {
+  const indexPath = path.resolve(frontendPath, "index.html");
+  console.log("Index path:", indexPath); // Debug log
+  
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    console.error("Frontend build not found at:", indexPath);
+    res.status(404).send('Frontend build not found. Make sure you have built the React app.');
+  }
+});
 
 // 404 Middleware
 app.use((req, res) => {
