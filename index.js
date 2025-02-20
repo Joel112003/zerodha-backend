@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cookieParser = require("cookie-parser");
-const cors = require("cors");
+const cors = require("cors"); // Ensure this is installed: npm install cors
 const path = require("path");
 const authRoute = require("./Routes/AuthRoute");
 const { HoldingModel } = require("./Model/HoldingModel");
@@ -20,21 +20,31 @@ if (!jwtSecret || !uri) {
   process.exit(1);
 }
 
+// CORS configuration for specific origins
+const corsOptions = {
+  origin: [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://zerodha-frontend-4gwg.onrender.com",
+    "https://zerodha-dashboard-head.onrender.com", // Add this if needed for this domain
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+};
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
 // Middleware
-app.use(express.json()); // Use express.json() instead of bodyParser.json()
-app.use(
-  cors({
-    origin: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "https://zerodha-frontend-4gwg.onrender.com",
-      "https://zerodha-dashboard-head.onrender.com",
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true,
-  })
-);
+app.use(express.json());
 app.use(cookieParser());
+
+// Root route (optional, serves a welcome message or redirects to frontend)
+app.get("/", (req, res) => {
+  res.send("Welcome to Zerodha Dashboard API - Visit /auth/signup or use the frontend at /");
+});
 
 // API Routes
 app.use("/auth", authRoute);
@@ -149,7 +159,7 @@ app.get("/getOrders", async (req, res) => {
   }
 });
 
-// Serve frontend (ensure this is last)
+// Serve React frontend in production (ensure this is last)
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "build")));
   app.get("*", (req, res) => {
