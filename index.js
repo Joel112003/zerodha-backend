@@ -41,10 +41,6 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
 
-// Root route (optional, serves a welcome message or redirects to frontend)
-app.get("/", (req, res) => {
-  res.send("Welcome to Zerodha Dashboard API - Visit /auth/signup or use the frontend at /");
-});
 
 // API Routes
 app.use("/auth", authRoute);
