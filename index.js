@@ -27,8 +27,8 @@ app.use(
     origin: [
       "http://localhost:3000", // Added this line
       "http://localhost:3001",
-      "https://zerodha-frontend-4gwg.onrender.com/",
-      "https://zerodha-dashboard-nh23.onrender.com/",
+      "https://zerodha-frontend-4gwg.onrender.com",
+      "https://zerodha-dashboard-nh23.onrender.com",
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
