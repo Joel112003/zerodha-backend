@@ -28,7 +28,7 @@ app.use(
       "http://localhost:3000",
       "http://localhost:3001",
       "https://zerodha-frontend-4gwg.onrender.com",
-      "https://zerodha-dashboard-8v2w.onrender.com  ",
+      "https://zerodha-dashboard-head.onrender.com",
     ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
