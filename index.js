@@ -23,9 +23,27 @@ if (!JWT_SECRET || !MONGO_URI) {
   process.exit(1);
 }
 
-// Security Middlewares
-app.use(helmet());
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
+// Enhanced Security Middlewares
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'", "cdnjs.cloudflare.com"],
+      },
+    },
+  })
+);
+
+app.use(rateLimit({ 
+  windowMs: 15 * 60 * 1000, 
+  max: 100,
+  message: { success: false, message: "Too many requests, please try again later." }
+}));
 
 // Middleware
 app.use(express.json());
@@ -35,8 +53,9 @@ app.use(cookieParser());
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
-  "https://zerodha-frontend-4gwg.onrender.com",
-  "https://zerodha-dashboard-head.onrender.com",
+  "http://localhost:3002",
+  "https://main.d30egosej6ju9p.amplifyapp.com",
+  "https://main.dawo5c03h7vkf.amplifyapp.com",
 ];
 
 app.use(
@@ -53,7 +72,7 @@ app.use(
   })
 );
 
-// Routes
+// API Routes
 app.use("/auth", authRoute);
 
 // Holdings endpoints
@@ -164,35 +183,51 @@ app.get("/addOrders", async (req, res, next) => {
   }
 });
 
-// Serve static files and handle frontend routes
+// Static file serving configuration
 const frontendPath = path.resolve(__dirname, "../frontend/build");
-console.log("Frontend path:", frontendPath); // Debug log
+console.log("Frontend path:", frontendPath);
 
-// Serve static files
-app.use(express.static(frontendPath));
+// Check if build directory exists
+if (!fs.existsSync(frontendPath)) {
+  console.error("❌ Frontend build directory not found at:", frontendPath);
+  console.error("Please run 'npm run build' in the frontend directory");
+} else {
+  console.log("✅ Frontend build directory found");
+}
 
-// Handle all other routes by serving index.html
+// Serve static files with caching
+app.use(express.static(frontendPath, {
+  maxAge: '1h',
+  etag: true,
+  lastModified: true
+}));
+
+// Handle frontend routes
 app.get("*", (req, res) => {
-  const indexPath = path.resolve(frontendPath, "index.html");
-  console.log("Index path:", indexPath); // Debug log
+  const indexPath = path.join(frontendPath, "index.html");
   
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    console.error("Frontend build not found at:", indexPath);
-    res.status(404).send('Frontend build not found. Make sure you have built the React app.');
+    console.error("❌ index.html not found at:", indexPath);
+    res.status(404).send('Frontend build not found. Please run npm run build in the frontend directory.');
   }
 });
 
-// 404 Middleware
+// Error Handling Middlewares
 app.use((req, res) => {
-  res.status(404).json({ success: false, message: `❌ Resource not found: ${req.method} ${req.url}` });
+  res.status(404).json({ 
+    success: false, 
+    message: `❌ Resource not found: ${req.method} ${req.url}` 
+  });
 });
 
-// Global Error Handler
 app.use((err, req, res, next) => {
   console.error("🔥 Error:", err);
-  res.status(err.status || 500).json({ success: false, message: err.message || "Internal Server Error" });
+  res.status(err.status || 500).json({ 
+    success: false, 
+    message: err.message || "Internal Server Error" 
+  });
 });
 
 // MongoDB Connection
@@ -204,11 +239,14 @@ const connectDB = async () => {
     });
     console.log("✅ Connected to MongoDB");
 
-    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📁 Serving frontend from: ${frontendPath}`);
+    });
   } catch (err) {
     console.error("❌ MongoDB connection error:", err);
     process.exit(1);
   }
 };
 
-connectDB();  
+connectDB();
