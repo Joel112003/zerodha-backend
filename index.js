@@ -51,12 +51,9 @@ app.use(cookieParser());
 
 // CORS Configuration
 const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://localhost:3002",
-  "https://main.d30egosej6ju9p.amplifyapp.com",
-  "https://main.dawo5c03h7vkf.amplifyapp.com",
-];
+  process.env.FRONTEND_URL,
+  process.env.DASHBOARD_URL,
+].filter(Boolean); 
 
 app.use(
   cors({
