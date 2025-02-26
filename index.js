@@ -180,62 +180,62 @@ app.get("/addOrders", async (req, res, next) => {
   }
 });
 
-// Static file serving configuration
+// 📁 **Frontend Build Path**
 const frontendPath = path.resolve(__dirname, "../frontend/build");
 console.log("Frontend path:", frontendPath);
 
-// Check if build directory exists
+// ✅ **Check if Frontend Build Directory Exists**
 if (!fs.existsSync(frontendPath)) {
   console.error("❌ Frontend build directory not found at:", frontendPath);
-  console.error("Please run 'npm run build' in the frontend directory");
+  console.error("Please run `npm run build` in the frontend directory.");
 } else {
   console.log("✅ Frontend build directory found");
 }
 
-// Serve static files with caching
-app.use(express.static(frontendPath, {
-  maxAge: '1h',
-  etag: true,
-  lastModified: true
-}));
+// ✅ **Serve Static Frontend Files**
+app.use(
+  express.static(frontendPath, {
+    maxAge: "1h",
+    etag: true,
+    lastModified: true,
+  })
+);
 
-// Handle frontend routes
+// ✅ **Serve `index.html` for All Unknown Routes**
 app.get("*", (req, res) => {
   const indexPath = path.join(frontendPath, "index.html");
-  
+
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
     console.error("❌ index.html not found at:", indexPath);
-    res.status(404).send('Frontend build not found. Please run npm run build in the frontend directory.');
+    res.status(404).send("Frontend build not found. Please run `npm run build` in the frontend directory.");
   }
 });
 
-// Error Handling Middlewares
+// ✅ **Error Handling Middleware**
 app.use((req, res) => {
-  res.status(404).json({ 
-    success: false, 
-    message: `❌ Resource not found: ${req.method} ${req.url}` 
+  res.status(404).json({
+    success: false,
+    message: `❌ Resource not found: ${req.method} ${req.url}`,
   });
 });
 
 app.use((err, req, res, next) => {
   console.error("🔥 Error:", err);
-  res.status(err.status || 500).json({ 
-    success: false, 
-    message: err.message || "Internal Server Error" 
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal Server Error",
   });
 });
 
-// MongoDB Connection
+// ✅ **MongoDB Connection**
 const connectDB = async () => {
   try {
-    await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(MONGO_URI);
     console.log("✅ Connected to MongoDB");
 
+    // ✅ **Start Server Only After DB Connection**
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📁 Serving frontend from: ${frontendPath}`);
