@@ -113,48 +113,75 @@ app.post("/newOrder", async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Mode must be BUY or SELL" });
     }
 
-    const newOrder = new OrderModel({ name, qty, price, mode });
-    await newOrder.save();
+    // Start a transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    // Update holdings
-    const existingHolding = await HoldingModel.findOne({ name });
+    try {
+      const newOrder = new OrderModel({ name, qty, price, mode });
+      await newOrder.save({ session });
 
-    if (existingHolding) {
-      if (mode === "BUY") {
-        const totalCost = existingHolding.avg * existingHolding.qty + price * qty;
-        const totalQty = existingHolding.qty + qty;
-        const newAvgPrice = totalCost / totalQty;
+      // Update holdings
+      const existingHolding = await HoldingModel.findOne({ name }).session(session);
 
-        await HoldingModel.findByIdAndUpdate(existingHolding._id, {
-          qty: totalQty,
-          avg: newAvgPrice,
-          price,
-        });
-      } else if (mode === "SELL") {
-        const remainingQty = existingHolding.qty - qty;
-        if (remainingQty > 0) {
-          await HoldingModel.findByIdAndUpdate(existingHolding._id, {
-            qty: remainingQty,
-            price,
-          });
-        } else if (remainingQty === 0) {
-          await HoldingModel.findByIdAndDelete(existingHolding._id);
-        } else {
-          throw new Error("Cannot sell more than owned quantity");
+      if (existingHolding) {
+        if (mode === "BUY") {
+          const totalCost = existingHolding.avg * existingHolding.qty + price * qty;
+          const totalQty = existingHolding.qty + qty;
+          const newAvgPrice = totalCost / totalQty;
+
+          await HoldingModel.findByIdAndUpdate(
+            existingHolding._id, 
+            { qty: totalQty, avg: newAvgPrice, price }, 
+            { session }
+          );
+        } else if (mode === "SELL") {
+          const remainingQty = existingHolding.qty - qty;
+          if (remainingQty > 0) {
+            await HoldingModel.findByIdAndUpdate(
+              existingHolding._id, 
+              { qty: remainingQty, price }, 
+              { session }
+            );
+          } else if (remainingQty === 0) {
+            await HoldingModel.findByIdAndDelete(existingHolding._id, { session });
+          } else {
+            // Return proper error response instead of throwing
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(400).json({ 
+              success: false, 
+              message: "Cannot sell more than owned quantity" 
+            });
+          }
         }
+      } else if (mode === "BUY") {
+        const newHolding = new HoldingModel({ name, qty, avg: price, price, net: 0, day: 0 });
+        await newHolding.save({ session });
+      } else {
+        await session.abortTransaction();
+        session.endSession();
+        return res.status(400).json({ 
+          success: false, 
+          message: "Cannot sell stock that is not owned" 
+        });
       }
-    } else if (mode === "BUY") {
-      const newHolding = new HoldingModel({ name, qty, avg: price, price, net: 0, day: 0 });
-      await newHolding.save();
-    } else {
-      throw new Error("Cannot sell stock that is not owned");
-    }
 
-    res.status(201).json({
-      success: true,
-      message: "Order placed and holdings updated successfully",
-      order: newOrder,
-    });
+      // Commit the transaction
+      await session.commitTransaction();
+      session.endSession();
+
+      res.status(201).json({
+        success: true,
+        message: "Order placed and holdings updated successfully",
+        order: newOrder,
+      });
+    } catch (transactionError) {
+      // If anything fails, abort the transaction
+      await session.abortTransaction();
+      session.endSession();
+      throw transactionError;
+    }
   } catch (error) {
     next(error);
   }
@@ -181,7 +208,7 @@ app.get("/addOrders", async (req, res, next) => {
 });
 
 // 📁 **Frontend Build Path**
-const frontendPath = path.resolve(__dirname, "../frontend/build");
+const frontendPath = path.join(__dirname, "build");  
 console.log("Frontend path:", frontendPath);
 
 // ✅ **Check if Frontend Build Directory Exists**
